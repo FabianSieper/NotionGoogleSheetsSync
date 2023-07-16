@@ -122,6 +122,7 @@ set_credentials() {
         echo "'${credentials_path}' file does not exist. Creating one now..."
 
         echo "Please follow the instructions to download the credentials file for Google"
+        echo "These steps only have to be performed once:"
         echo "1. Visit the site https://console.developers.google.com"
         echo "2. Create a new project and give it a name"
         echo "3. Click on 'Enable APIs and Services'"
@@ -136,7 +137,7 @@ set_credentials() {
         echo "12. Choose 'JSON' as the key type and click 'Create'"
         echo "13. Open the Google Sheet you want to use for your sync"
         echo "14. Click 'Share', enter the email contained in the downloaded .json file and choose the role 'Editor'"
-        echo "15. Copy the content of the downloaded .json file into this cmd"
+        echo "15. Copy the content of the downloaded .json file beneath this line"
 
         credentials=""
         while IFS= read -r line; do
