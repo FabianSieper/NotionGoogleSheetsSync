@@ -23,13 +23,38 @@ get_script_path() {
     echo "$script_path"
 }
 
+create_notion_query_filter() {
+    local filter_field="$1"
+    local filter_type="$2"
+    local filter_value="$3"
+
+    if [[ -z "$filter_field" || -z "$filter_type" || -z "$filter_value" ]]; then
+        # If any of the required parameters is empty, return an empty string
+        echo ''
+    else
+        # Create the filter JSON
+        local filter_json=$(cat <<EOF
+        {
+            "property": "$filter_field",
+            "$filter_type": {
+                "equals": "$filter_value"
+            }
+        }
+EOF
+)
+        # Return the filter JSON
+        echo "$filter_json"
+    fi
+}
+
 # get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID"
 get_all_notion_entries() {
 
     local notion_api_key="$1"
     local database_id="$2"
     local filter_field="$3"
-    local filter_value="$4"
+    local filter_type="$4"
+    local filter_value="$5"
 
     if [[ -z "$filter_field" || -z "$filter_value" ]]; then
 
@@ -43,19 +68,14 @@ get_all_notion_entries() {
             -H 'Authorization: Bearer '"$notion_api_key"'' \
             -H 'Notion-Version: 2022-06-28' \
             -H "Content-Type: application/json" \
-            -d '{
-                "filter": {
-                    "or": [
-                        {
-                            "property": "'"$filter_field"'",
-                            "rich_text": {
-                                "equals": "'"$filter_value"'"
-                            }
-                        }
+            -d "{
+                \"filter\": {
+                    \"or\": [
+                        $(create_notion_query_filter "$filter_field" "$filter_type" "$filter_value")
                     ]
                     
                 }
-            }' | jq
+            }" | jq
     fi
 }
 
@@ -269,12 +289,13 @@ DATABASE_ID=${configuration[1]}
 SPREADSHEET_ID=${configuration[2]}
 RANGE=${configuration[3]}
 FILTER_FIELD="$1"
-FILTER_VALUE="$2"
+FILTER_TYPE="$2"
+FILTER_VALUE="$3"
 
 # -------------------------------------------------------------------------
 # Execution of functions
 # -------------------------------------------------------------------------
-notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_VALUE")
+notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
 data=$(transform_notion_data_to_sheet_data "$notion_data")
 
 set_credentials
