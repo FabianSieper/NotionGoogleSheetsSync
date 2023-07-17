@@ -30,6 +30,7 @@ create_notion_query_filter() {
 
     if [[ -z "$filter_field" || -z "$filter_type" || -z "$filter_value" ]]; then
         # If any of the required parameters is empty, return an empty string
+        echo 'WARNING: Could not calculate filter!' 2>&1
         echo ''
     else
         # Create the filter JSON
@@ -296,6 +297,7 @@ FILTER_VALUE="$3"
 # Execution of functions
 # -------------------------------------------------------------------------
 notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
+echo ${notion_data}|jq
 data=$(transform_notion_data_to_sheet_data "$notion_data")
 
 set_credentials

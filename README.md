@@ -16,7 +16,7 @@ To filter the entries of the Notion database you can run
 ```
 .\main.sh column_name content_type content_to_filter_for
 ```
-Here, it is filter for column_name = content_to_filter_for. The content_type is required for the internal request of the script. This, for example, might be "richt_text" for a default text, or "text" for a title column.
+Here, it is filter for column_name = content_to_filter_for. The content_type is required for the internal request of the script. This, for example, might be "richt_text" for a default text or title column.
 
 ## Features
 * Pulls data from a Notion database and formats it for a Google Sheet.
