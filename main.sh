@@ -28,10 +28,35 @@ get_all_notion_entries() {
 
     local notion_api_key="$1"
     local database_id="$2"
+    local filter_field="$3"
+    local filter_value="$4"
 
-    curl -X POST 'https://api.notion.com/v1/databases/'"${database_id}"'/query' \
-        -H 'Authorization: Bearer '"$notion_api_key"'' \
-        -H 'Notion-Version: 2022-06-28' | jq
+    if [[ -z "$filter_field" || -z "$filter_value" ]]; then
+
+        curl -X POST 'https://api.notion.com/v1/databases/'"${database_id}"'/query' \
+            -H 'Authorization: Bearer '"$notion_api_key"'' \
+            -H 'Notion-Version: 2022-06-28' | jq
+
+    else
+
+        curl -X POST 'https://api.notion.com/v1/databases/'"${database_id}"'/query' \
+            -H 'Authorization: Bearer '"$notion_api_key"'' \
+            -H 'Notion-Version: 2022-06-28' \
+            -H "Content-Type: application/json" \
+            -d '{
+                "filter": {
+                    "or": [
+                        {
+                            "property": "'"$filter_field"'",
+                            "rich_text": {
+                                "equals": "'"$filter_value"'"
+                            }
+                        }
+                    ]
+                    
+                }
+            }' | jq
+    fi
 }
 
 update_google_sheet() {
@@ -243,12 +268,13 @@ NOTION_API_KEY=${configuration[0]}
 DATABASE_ID=${configuration[1]}
 SPREADSHEET_ID=${configuration[2]}
 RANGE=${configuration[3]}
+FILTER_FIELD="$1"
+FILTER_VALUE="$2"
 
 # -------------------------------------------------------------------------
 # Execution of functions
 # -------------------------------------------------------------------------
-
-notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID")
+notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_VALUE")
 data=$(transform_notion_data_to_sheet_data "$notion_data")
 
 set_credentials
