@@ -210,12 +210,14 @@ transform_notion_data_to_sheet_data() {
     local json_output="$1"
 
     # Use 'jq' to extract the desired values
-    local name_values=$(echo $json_output | jq -r '.results[].properties.Name.title[].text.content')
-    local data_values=$(echo $json_output | jq -r '.results[].properties.Data.rich_text[].text.content')
+    # TODO: automatically convert each column and each type of column
+    local name_values=$(echo $json_output | jq -r '.results[].properties.Summary.title[].text.content')
+    local data_values=$(echo $json_output | jq -r '.results[].properties.ISPI.rich_text[].text.content')
 
     # Convert 'name_values' and 'data_values' into arrays
-    local name_values_array=($name_values)
-    local data_values_array=($data_values)
+    IFS=$'\n' read -d '' -r -a name_values_array <<< "$name_values"
+    IFS=$'\n' read -d '' -r -a data_values_array <<< "$data_values"
+
 
     # Initialize 'data' as an empty array
     declare -a data
@@ -297,7 +299,6 @@ FILTER_VALUE="$3"
 # Execution of functions
 # -------------------------------------------------------------------------
 notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
-echo ${notion_data}|jq
 data=$(transform_notion_data_to_sheet_data "$notion_data")
 
 set_credentials
