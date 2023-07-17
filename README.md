@@ -5,6 +5,19 @@ This script is designed to sync data from a Notion database to a Google Sheet. T
 * [gloucd](https://cloud.google.com/sdk/docs/install?hl=de#linux)
 * [jq](https://jqlang.github.io/jq/download/)
 
+## Usage
+Either run
+```
+.\main.sh
+```
+In order to retrieve all entries from a Notion database. It has to be kept in mind, that only a maximum of 50 is returned by the default Notion request.
+
+To filter the entries of the Notion database you can run
+```
+.\main.sh column_name content_type content_to_filter_for
+```
+Here, it is filter for column_name = content_to_filter_for. The content_type is required for the internal request of the script. This, for example, might be "richt_text" for a default text, or "text" for a title column.
+
 ## Features
 * Pulls data from a Notion database and formats it for a Google Sheet.
 * Allows for the synchronization of data between a Notion database and a Google Sheet.
