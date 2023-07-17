@@ -38,7 +38,7 @@ create_notion_query_filter() {
         {
             "property": "$filter_field",
             "$filter_type": {
-                "equals": "$filter_value"
+                "contains": "$filter_value"
             }
         }
 EOF
