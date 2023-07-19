@@ -306,7 +306,10 @@ transform_value_to_value_of_interest() {
 
     elif [[ $value == *"\"people\":"* ]]; then
 
-        echo $value | jq -r '.people'
+        people_ids=$(echo $value | jq -r '[.people[]?.id // empty] | join(", ")')
+        if [[ -n "$people_ids" ]]; then
+            echo "$people_ids"
+        fi
 
     elif [[ $value == *"\"rollup\":"* ]]; then
 
@@ -318,7 +321,7 @@ transform_value_to_value_of_interest() {
 
     elif [[ $value == *"\"last_edited_by\":"* ]]; then
 
-        echo $value | jq -r '.last_edited_by.name'
+        echo $value | jq -r '.last_edited_by.id'
 
     fi
 }   
@@ -435,6 +438,7 @@ FILTER_VALUE="$3"
 set_credentials
 
 notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
+
 # extract results
 data=$(advanced_transform_notion_data_to_sheet_data "$notion_data")
 
