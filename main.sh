@@ -38,7 +38,7 @@ create_notion_query_filter() {
         {
             "property": "$filter_field",
             "$filter_type": {
-                "equals": "$filter_value"
+                "contains": "$filter_value"
             }
         }
 EOF
@@ -80,6 +80,10 @@ get_all_notion_entries() {
     fi
 }
 
+escape_quotes() {
+    echo $1 | sed 's/"/\\"/g'
+}
+
 update_google_sheet() {
     local spreadsheet_id="$1"
     local range="$2"
@@ -110,15 +114,22 @@ update_google_sheet() {
     # Use the JWT to obtain an access token from Google
     access_token=$(curl -s -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}" https://oauth2.googleapis.com/token | jq -r .access_token)
 
+    data_working='[["1","[]","[  {    \"id\": \"94fc70d1-4bd1-4aae-bc3a-6f3dd7213bf1\"  }]","[]","null","Restaufwand: ? h","[]","null","Low","false","Kobra","null","[]","[]","null","https://atc.bmwgroup.net/jira/browse/ISPI-316567","ISPI-316567","Integration-Fabian-Sieper","null","null","false","[]","false","Closed","0","CaVORS-79","null","[KAI] Generate a GitHub access token for a technical user"]]'
+
+    payload=$(jq -n \
+                    --arg range "$range" \
+                    --argjson data "$data" \
+                    '{
+                        "range": $range,
+                        "majorDimension": "ROWS",
+                        "values": $data
+                    }')
+
     curl -X PUT \
     "https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet_id}/values/${range}?valueInputOption=USER_ENTERED" \
     -H "Authorization: Bearer ${access_token}" \
     -H "Content-Type: application/json" \
-    -d '{
-        "range": "'"${range}"'",
-        "majorDimension": "ROWS",
-        "values": '"${data}"'
-    }'
+    -d "$payload"
 }
 
 get_absolute_path() {
@@ -205,41 +216,6 @@ set_credentials() {
     fi
 }
 
-transform_notion_data_to_sheet_data() {
-    # The first argument is the JSON output from the Notion API
-    local json_output="$1"
-
-    # Use 'jq' to extract the desired values
-    # TODO: automatically convert each column and each type of column
-    local name_values=$(echo $json_output | jq -r '.results[].properties.Summary.title[].text.content')
-    local data_values=$(echo $json_output | jq -r '.results[].properties.ISPI.rich_text[].text.content')
-
-    # Convert 'name_values' and 'data_values' into arrays
-    IFS=$'\n' read -d '' -r -a name_values_array <<< "$name_values"
-    IFS=$'\n' read -d '' -r -a data_values_array <<< "$data_values"
-
-
-    # Initialize 'data' as an empty array
-    declare -a data
-
-    # Loop over the indices of 'name_values_array'
-    for i in "${!name_values_array[@]}"; do
-        # Get the corresponding 'name_value' and 'data_value'
-        local name_value="${name_values_array[i]}"
-        local data_value="${data_values_array[i]}"
-
-        # Append a new list containing 'name_value' and 'data_value' to 'data'
-        # Note: the strings are now quoted
-        data+=("[\"$name_value\",\"$data_value\"]")
-    done
-
-    # Convert 'data' into a string that can be passed to 'update_google_sheet'
-    local data_string="[$(IFS=,; echo "${data[*]}")]"
-
-    # Return 'data_string'
-    echo "$data_string"
-}
-
 get_or_prompt_for_configuration() {
     CONFIGURATION_FILE=$(get_configuration_path)
 
@@ -276,10 +252,177 @@ EOF
     declare -p configuration
 }
 
+transform_value_to_value_of_interest() {
+    value=$1
+
+    if [[ $value == *"\"formula\":"* ]]; then
+        formula=$(echo $value | jq '.formula')
+        
+        if [[ $formula == *"number"* ]] ; then
+            echo $formula | jq '.number'
+        else
+            echo $formula | jq '.string'
+        fi
+
+    elif [[ $value == *"\"select\":"* ]]; then
+
+        select=$(echo $value | jq '.select')
+        echo $select | jq '.name'
+
+    elif [[ $value == *"\"url\":"* ]]; then
+
+        echo $value | jq '.url'
+
+    elif [[ $value == *"\"checkbox\":"* ]]; then
+
+        echo $value | jq '.checkbox'
+
+    elif [[ $value == *"\"number\":"* ]]; then
+
+        echo $value | jq '.number'
+
+    elif [[ $value == *"\"rich_text\":"* ]]; then
+
+        echo $value | jq -r '.rich_text[0].plain_text'
+
+    elif [[ $value == *"\"status\":"* ]]; then
+
+        echo $value | jq -r '.status.name'
+
+    elif [[ $value == *"\"title\":"* ]]; then
+
+        echo $value | jq -r '.title[0].plain_text'
+
+    elif [[ $value == *"\"relation\":"* ]]; then
+
+        relation_ids=$(echo $value | jq -r '[.relation[]?.id // empty] | join(", ")')
+        if [[ -n "$relation_ids" ]]; then
+            echo "$relation_ids"
+        fi
+
+    elif [[ $value == *"\"date\":"* ]]; then
+
+        echo $value | jq -r '.date'
+
+    elif [[ $value == *"\"people\":"* ]]; then
+
+        people_ids=$(echo $value | jq -r '[.people[]?.id // empty] | join(", ")')
+        if [[ -n "$people_ids" ]]; then
+            echo "$people_ids"
+        fi
+
+    elif [[ $value == *"\"rollup\":"* ]]; then
+
+        echo $value | jq -r '.rollup'
+
+    elif [[ $value == *"\"last_edited_time\":"* ]]; then
+
+        echo $value | jq -r '.rollup'
+
+    elif [[ $value == *"\"last_edited_by\":"* ]]; then
+
+        echo $value | jq -r '.last_edited_by.id'
+
+    fi
+}   
+
+
+advanced_transform_notion_data_to_sheet_data() {
+
+    notion_data="$1"
+    results=$(echo "$notion_data" | jq '.results')
+
+    # Iterate over each returned Notion page
+    len=$(echo "$notion_data" | jq '.results | length')
+
+    # Save the current IFS value and set IFS to newline only
+    old_IFS=$IFS
+    IFS=$'\n'
+
+    # The array which will be returned at the end
+    declare -a final_data=()
+
+    for (( i=0; i<$len; i++ ))
+    do
+        # Extract each object from the array
+        page=$(echo "$notion_data" | jq -r ".results[$i]")
+        properties=$(echo "$page" | jq -r '.properties | to_entries[] | "\(.key): \(.value)"')
+
+        row=()
+
+        for property in $properties; do
+
+            # Restore the original IFS value after using it in for loop
+            IFS=$old_IFS
+
+            key="${property%%:*}"
+            value="${property#*:}"
+
+            value_of_interest="$(transform_value_to_value_of_interest "$value")"
+
+            # Add quotes if they dont exist yet
+            if [[ "${value_of_interest:0:1}" != "\"" || "${value_of_interest: -1}" != "\"" ]]; then
+              value_of_interest="\"${value_of_interest}\""
+            fi
+
+            row+=("$value_of_interest,")
+
+            # Set IFS back to newline for the next iteration of the loop
+            IFS=$'\n'
+        done
+
+        # Remove final comma, which is not required
+        new_row_content="${row[*]}"
+        new_row=$(echo "[${new_row_content%?}]" | tr -d '\n')
+
+        final_data+=("${new_row},")
+
+    done
+
+    # Remove final comma, which is not required
+    final_data_content="${final_data[*]}"
+    echo "[${final_data_content%?}]"
+}
+
+transform_notion_data_to_sheet_data() {
+    # The first argument is the JSON output from the Notion API
+    local json_output="$1"
+
+    # Use 'jq' to extract the desired values
+    # TODO: automatically convert each column and each type of column
+    local name_values=$(echo $json_output | jq -r '.results[].properties.Summary.title[].text.content')
+    local data_values=$(echo $json_output | jq -r '.results[].properties.ISPI.rich_text[].text.content')
+
+    # Convert 'name_values' and 'data_values' into arrays
+    IFS=$'\n' read -d '' -r -a name_values_array <<< "$name_values"
+    IFS=$'\n' read -d '' -r -a data_values_array <<< "$data_values"
+
+
+    # Initialize 'data' as an empty array
+    declare -a data
+
+    # Loop over the indices of 'name_values_array'
+    for i in "${!name_values_array[@]}"; do
+        # Get the corresponding 'name_value' and 'data_value'
+        local name_value="${name_values_array[i]}"
+        local data_value="${data_values_array[i]}"
+
+        # Append a new list containing 'name_value' and 'data_value' to 'data'
+        # Note: the strings are now quoted
+        data+=("[\"$name_value\",\"$data_value\"]")
+    done
+
+    # Convert 'data' into a string that can be passed to 'update_google_sheet'
+    local data_string="[$(IFS=,; echo "${data[*]}")]"
+
+    # Return 'data_string'
+    echo "$data_string"
+}
+
+
 # -------------------------------------------------------------------------
 # Global variables
 # -------------------------------------------------------------------------
-
 eval "$(get_or_prompt_for_configuration)"
 NOTION_API_KEY=${configuration[0]}
 DATABASE_ID=${configuration[1]}
@@ -292,8 +435,11 @@ FILTER_VALUE="$3"
 # -------------------------------------------------------------------------
 # Execution of functions
 # -------------------------------------------------------------------------
-notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
-data=$(transform_notion_data_to_sheet_data "$notion_data")
-
 set_credentials
+
+notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
+
+# extract results
+data=$(advanced_transform_notion_data_to_sheet_data "$notion_data")
+
 update_google_sheet "${SPREADSHEET_ID}" "${RANGE}" "${data}"
