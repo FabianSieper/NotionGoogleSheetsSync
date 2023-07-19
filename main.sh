@@ -280,12 +280,6 @@ EOF
 # Global variables
 # -------------------------------------------------------------------------
 
-# TODO: remove later on
-# NOTION_API_KEY="secret_xk0qm0kDp2gaGiNG6wfZFHbOxDdVQul1bvM3sAxDCHQ"
-# DATABASE_ID="24a1af3d1ebf4c9492db1221eb488fa4"
-# SPREADSHEET_ID="1E2098Sr5aXUQSmQfA9vCpsl2PiEESWyVODGEj2bUKno"
-# RANGE="Sheet1!A1" # Change this according to your needs
-
 eval "$(get_or_prompt_for_configuration)"
 NOTION_API_KEY=${configuration[0]}
 DATABASE_ID=${configuration[1]}
