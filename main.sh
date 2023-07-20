@@ -54,8 +54,7 @@ get_all_notion_entries() {
     local notion_api_key="$1"
     local database_id="$2"
     local filter_field="$3"
-    local filter_type="$4"
-    local filter_value="$5"
+    local filter_value="$4"
 
     if [[ -z "$filter_field" || -z "$filter_value" ]]; then
 
@@ -72,7 +71,7 @@ get_all_notion_entries() {
             -d "{
                 \"filter\": {
                     \"or\": [
-                        $(create_notion_query_filter "$filter_field" "$filter_type" "$filter_value")
+                        $(create_notion_query_filter "$filter_field" "rich_text" "$filter_value")
                     ]
                     
                 }
@@ -253,78 +252,57 @@ EOF
 }
 
 transform_value_to_value_of_interest() {
-    value=$1
+    json=$(jq -c . <<<"$1")
 
-    if [[ $value == *"\"formula\":"* ]]; then
-        formula=$(echo $value | jq '.formula')
-        
-        if [[ $formula == *"number"* ]] ; then
-            echo $formula | jq '.number'
-        else
-            echo $formula | jq '.string'
-        fi
-
-    elif [[ $value == *"\"select\":"* ]]; then
-
-        select=$(echo $value | jq '.select')
-        echo $select | jq '.name'
-
-    elif [[ $value == *"\"url\":"* ]]; then
-
-        echo $value | jq '.url'
-
-    elif [[ $value == *"\"checkbox\":"* ]]; then
-
-        echo $value | jq '.checkbox'
-
-    elif [[ $value == *"\"number\":"* ]]; then
-
-        echo $value | jq '.number'
-
-    elif [[ $value == *"\"rich_text\":"* ]]; then
-
-        echo $value | jq -r '.rich_text[0].plain_text'
-
-    elif [[ $value == *"\"status\":"* ]]; then
-
-        echo $value | jq -r '.status.name'
-
-    elif [[ $value == *"\"title\":"* ]]; then
-
-        echo $value | jq -r '.title[0].plain_text'
-
-    elif [[ $value == *"\"relation\":"* ]]; then
-
-        relation_ids=$(echo $value | jq -r '[.relation[]?.id // empty] | join(", ")')
-        if [[ -n "$relation_ids" ]]; then
-            echo "$relation_ids"
-        fi
-
-    elif [[ $value == *"\"date\":"* ]]; then
-
-        echo $value | jq -r '.date'
-
-    elif [[ $value == *"\"people\":"* ]]; then
-
-        people_ids=$(echo $value | jq -r '[.people[]?.id // empty] | join(", ")')
-        if [[ -n "$people_ids" ]]; then
-            echo "$people_ids"
-        fi
-
-    elif [[ $value == *"\"rollup\":"* ]]; then
-
-        echo $value | jq -r '.rollup'
-
-    elif [[ $value == *"\"last_edited_time\":"* ]]; then
-
-        echo $value | jq -r '.rollup'
-
-    elif [[ $value == *"\"last_edited_by\":"* ]]; then
-
-        echo $value | jq -r '.last_edited_by.id'
-
-    fi
-}   
+    case "$json" in
+        *\"formula\":*)
+            formula=$(jq -r '.formula // empty' <<<"$json")
+            jq -r '.number // .string // empty' <<<"$formula"
+            ;;
+        *\"select\":*)
+            jq -r '.select.name // empty' <<<"$json"
+            ;;
+        *\"url\":*)
+            jq -r '.url // empty' <<<"$json"
+            ;;
+        *\"checkbox\":*)
+            jq -r '.checkbox // empty' <<<"$json"
+            ;;
+        *\"number\":*)
+            jq -r '.number // empty' <<<"$json"
+            ;;
+        *\"rich_text\":*)
+            jq -r '.rich_text[0].plain_text // empty' <<<"$json"
+            ;;
+        *\"status\":*)
+            jq -r '.status.name // empty' <<<"$json"
+            ;;
+        *\"title\":*)
+            jq -r '.title[0].plain_text // empty' <<<"$json"
+            ;;
+        *\"relation\":*)
+            jq -r '[.relation[]?.id // empty] | join(", ")' <<<"$json"
+            ;;
+        *\"date\":*)
+            jq -r '.date // empty' <<<"$json"
+            ;;
+        *\"people\":*)
+            jq -r '[.people[]?.id // empty] | join(", ")' <<<"$json"
+            ;;
+        *\"rollup\":*)
+            jq -r '.rollup // empty' <<<"$json"
+            ;;
+        *\"last_edited_time\":*)
+            jq -r '.last_edited_time // empty' <<<"$json"
+            ;;
+        *\"last_edited_by\":*)
+            jq -r '.last_edited_by.id // empty' <<<"$json"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+} 
 
 
 advanced_transform_notion_data_to_sheet_data() {
@@ -342,14 +320,17 @@ advanced_transform_notion_data_to_sheet_data() {
     # The array which will be returned at the end
     declare -a final_data=()
 
+    echo "Formatting $len Notion entries ..." >&2
+
     for (( i=0; i<$len; i++ ))
     do
         # Extract each object from the array
         page=$(echo "$notion_data" | jq -r ".results[$i]")
         properties=$(echo "$page" | jq -r '.properties | to_entries[] | "\(.key): \(.value)"')
 
+        key_row=()
         row=()
-
+        
         for property in $properties; do
 
             # Restore the original IFS value after using it in for loop
@@ -357,6 +338,11 @@ advanced_transform_notion_data_to_sheet_data() {
 
             key="${property%%:*}"
             value="${property#*:}"
+
+            # First row shall be the key row
+            if [ $i -eq 0 ]; then
+                key_row+=("\"$key\",")
+            fi
 
             value_of_interest="$(transform_value_to_value_of_interest "$value")"
 
@@ -371,11 +357,19 @@ advanced_transform_notion_data_to_sheet_data() {
             IFS=$'\n'
         done
 
+        # First row shall be the key row
+        if [ $i -eq 0 ]; then
+            key_row_content="${key_row[*]}"
+            new_key_row=$(echo "[${key_row_content%?}]" | tr -d '\n')
+            final_data+=("${new_key_row},")
+        fi
+
         # Remove final comma, which is not required
         new_row_content="${row[*]}"
         new_row=$(echo "[${new_row_content%?}]" | tr -d '\n')
 
         final_data+=("${new_row},")
+        echo "Formatted entry $i ..." >&2
 
     done
 
@@ -383,42 +377,6 @@ advanced_transform_notion_data_to_sheet_data() {
     final_data_content="${final_data[*]}"
     echo "[${final_data_content%?}]"
 }
-
-transform_notion_data_to_sheet_data() {
-    # The first argument is the JSON output from the Notion API
-    local json_output="$1"
-
-    # Use 'jq' to extract the desired values
-    # TODO: automatically convert each column and each type of column
-    local name_values=$(echo $json_output | jq -r '.results[].properties.Summary.title[].text.content')
-    local data_values=$(echo $json_output | jq -r '.results[].properties.ISPI.rich_text[].text.content')
-
-    # Convert 'name_values' and 'data_values' into arrays
-    IFS=$'\n' read -d '' -r -a name_values_array <<< "$name_values"
-    IFS=$'\n' read -d '' -r -a data_values_array <<< "$data_values"
-
-
-    # Initialize 'data' as an empty array
-    declare -a data
-
-    # Loop over the indices of 'name_values_array'
-    for i in "${!name_values_array[@]}"; do
-        # Get the corresponding 'name_value' and 'data_value'
-        local name_value="${name_values_array[i]}"
-        local data_value="${data_values_array[i]}"
-
-        # Append a new list containing 'name_value' and 'data_value' to 'data'
-        # Note: the strings are now quoted
-        data+=("[\"$name_value\",\"$data_value\"]")
-    done
-
-    # Convert 'data' into a string that can be passed to 'update_google_sheet'
-    local data_string="[$(IFS=,; echo "${data[*]}")]"
-
-    # Return 'data_string'
-    echo "$data_string"
-}
-
 
 # -------------------------------------------------------------------------
 # Global variables
@@ -429,15 +387,14 @@ DATABASE_ID=${configuration[1]}
 SPREADSHEET_ID=${configuration[2]}
 RANGE=${configuration[3]}
 FILTER_FIELD="$1"
-FILTER_TYPE="$2"
-FILTER_VALUE="$3"
+FILTER_VALUE="$2"
 
 # -------------------------------------------------------------------------
 # Execution of functions
 # -------------------------------------------------------------------------
 set_credentials
 
-notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_TYPE" "$FILTER_VALUE")
+notion_data=$(get_all_notion_entries "$NOTION_API_KEY" "$DATABASE_ID" "$FILTER_FIELD" "$FILTER_VALUE")
 
 # extract results
 data=$(advanced_transform_notion_data_to_sheet_data "$notion_data")
