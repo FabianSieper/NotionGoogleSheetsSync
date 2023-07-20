@@ -252,57 +252,52 @@ EOF
 }
 
 transform_value_to_value_of_interest() {
-    json=$(jq -c . <<<"$1")
+    value=$1
+    jq_cmd=""
+    flag=""
 
-    case "$json" in
-        *\"formula\":*)
-            formula=$(jq -r '.formula // empty' <<<"$json")
-            jq -r '.number // .string // empty' <<<"$formula"
-            ;;
-        *\"select\":*)
-            jq -r '.select.name // empty' <<<"$json"
-            ;;
-        *\"url\":*)
-            jq -r '.url // empty' <<<"$json"
-            ;;
-        *\"checkbox\":*)
-            jq -r '.checkbox // empty' <<<"$json"
-            ;;
-        *\"number\":*)
-            jq -r '.number // empty' <<<"$json"
-            ;;
-        *\"rich_text\":*)
-            jq -r '.rich_text[0].plain_text // empty' <<<"$json"
-            ;;
-        *\"status\":*)
-            jq -r '.status.name // empty' <<<"$json"
-            ;;
-        *\"title\":*)
-            jq -r '.title[0].plain_text // empty' <<<"$json"
-            ;;
-        *\"relation\":*)
-            jq -r '[.relation[]?.id // empty] | join(", ")' <<<"$json"
-            ;;
-        *\"date\":*)
-            jq -r '.date // empty' <<<"$json"
-            ;;
-        *\"people\":*)
-            jq -r '[.people[]?.id // empty] | join(", ")' <<<"$json"
-            ;;
-        *\"rollup\":*)
-            jq -r '.rollup // empty' <<<"$json"
-            ;;
-        *\"last_edited_time\":*)
-            jq -r '.last_edited_time // empty' <<<"$json"
-            ;;
-        *\"last_edited_by\":*)
-            jq -r '.last_edited_by.id // empty' <<<"$json"
-            ;;
-        *)
-            echo ""
-            ;;
-    esac
-} 
+    if [[ $value == *"\"formula\":"* ]]; then
+        formula_type=$(jq -r 'if .formula.number then "number" else "string" end' <<<"$value")
+        jq_cmd=".formula.${formula_type}"
+    elif [[ $value == *"\"select\":"* ]]; then
+        jq_cmd=".select.name"
+    elif [[ $value == *"\"url\":"* ]]; then
+        jq_cmd=".url"
+    elif [[ $value == *"\"checkbox\":"* ]]; then
+        jq_cmd=".checkbox"
+    elif [[ $value == *"\"number\":"* ]]; then
+        jq_cmd=".number"
+    elif [[ $value == *"\"rich_text\":"* ]]; then
+        jq_cmd=".rich_text[0].plain_text"
+        flag="-r"
+    elif [[ $value == *"\"status\":"* ]]; then
+        jq_cmd=".status.name"
+        flag="-r"
+    elif [[ $value == *"\"title\":"* ]]; then
+        jq_cmd=".title[0].plain_text"
+        flag="-r"
+    elif [[ $value == *"\"relation\":"* ]]; then
+        jq_cmd='[.relation[]?.id // empty] | join(", ")'
+        flag="-r"
+    elif [[ $value == *"\"date\":"* ]]; then
+        jq_cmd=".date"
+        flag="-r"
+    elif [[ $value == *"\"people\":"* ]]; then
+        jq_cmd='[.people[]?.id // empty] | join(", ")'
+        flag="-r"
+    elif [[ $value == *"\"rollup\":"* ]]; then
+        jq_cmd=".rollup"
+        flag="-r"
+    elif [[ $value == *"\"last_edited_time\":"* ]]; then
+        jq_cmd=".rollup"
+        flag="-r"
+    elif [[ $value == *"\"last_edited_by\":"* ]]; then
+        jq_cmd=".last_edited_by.id"
+        flag="-r"
+    fi
+
+    [[ $jq_cmd ]] && jq $flag "$jq_cmd" <<<"$value"
+}
 
 
 advanced_transform_notion_data_to_sheet_data() {
