@@ -17,6 +17,12 @@ To filter the entries of the Notion database you can run
 .\main.sh column_name content_to_filter_for
 ```
 Here, it is filter for column_name = content_to_filter_for. Filter can only be applied to "text", "single-select", "multi-select" or "title" columns.
+
+It is also possible to change the Google Sheet tab name after the configuration-phase while executing the script. Simply enter the name of the Google Sheet tab as the third parameter. This will overwrite the set Sheet tab name for the current run.
+```
+./main.sh Summary "Summary of Notion Entry" Page2
+```
+
 Further examples:
 ```
 # Query for relation-page names. 

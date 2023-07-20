@@ -113,7 +113,7 @@ update_google_sheet() {
     # Use the JWT to obtain an access token from Google
     access_token=$(curl -s -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}" https://oauth2.googleapis.com/token | jq -r .access_token)
 
-    data_working='[["1","[]","[  {    \"id\": \"94fc70d1-4bd1-4aae-bc3a-6f3dd7213bf1\"  }]","[]","null","Restaufwand: ? h","[]","null","Low","false","Kobra","null","[]","[]","null","https://atc.bmwgroup.net/jira/browse/ISPI-316567","ISPI-316567","Integration-Fabian-Sieper","null","null","false","[]","false","Closed","0","CaVORS-79","null","[KAI] Generate a GitHub access token for a technical user"]]'
+    echo "$range"
 
     payload=$(jq -n \
                     --arg range "$range" \
@@ -123,6 +123,8 @@ update_google_sheet() {
                         "majorDimension": "ROWS",
                         "values": $data
                     }')
+
+    echo "$payload"
 
     curl -X PUT \
     "https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet_id}/values/${range}?valueInputOption=USER_ENTERED" \
@@ -222,7 +224,8 @@ get_or_prompt_for_configuration() {
         read -p "Enter your Notion API Key: " NOTION_API_KEY
         read -p "Enter your Database ID: " DATABASE_ID
         read -p "Enter your Spreadsheet ID: " SPREADSHEET_ID
-        read -p "Enter your Range (e.g. Sheet1!A1): " RANGE
+        read -p "Enter the Google sheets cell name, where the data shall be inserted from (e.g. A1): " CELL_NAME
+        read -p "Enter the Google sheets sheet name, where values shall be inserted (e.g. Sheet1): " SHEET_NAME
 
         # Create secrets.json
         echo "Creating configuration file '${CONFIGURATION_FILE}'" >&2
@@ -231,7 +234,8 @@ get_or_prompt_for_configuration() {
     "NOTION_API_KEY": "$NOTION_API_KEY",
     "DATABASE_ID": "$DATABASE_ID",
     "SPREADSHEET_ID": "$SPREADSHEET_ID",
-    "RANGE": "$RANGE"
+    "CELL_NAME": "$CELL_NAME",
+    "SHEET_NAME": "$SHEET_NAME"
 }
 EOF
     else
@@ -242,12 +246,13 @@ EOF
         NOTION_API_KEY=$(jq -r '.NOTION_API_KEY' $CONFIGURATION_FILE)
         DATABASE_ID=$(jq -r '.DATABASE_ID' $CONFIGURATION_FILE)
         SPREADSHEET_ID=$(jq -r '.SPREADSHEET_ID' $CONFIGURATION_FILE)
-        RANGE=$(jq -r '.RANGE' $CONFIGURATION_FILE)
+        CELL_NAME=$(jq -r '.CELL_NAME' $CONFIGURATION_FILE)
+        SHEET_NAME=$(jq -r '.SHEET_NAME' $CONFIGURATION_FILE)
     fi
 
     # Return as an associative array
     local configuration
-    configuration=("${NOTION_API_KEY}" "${DATABASE_ID}" "${SPREADSHEET_ID}" "${RANGE}")
+    configuration=("${NOTION_API_KEY}" "${DATABASE_ID}" "${SPREADSHEET_ID}" "${CELL_NAME}" "$SHEET_NAME")
     declare -p configuration
 }
 
@@ -380,9 +385,16 @@ eval "$(get_or_prompt_for_configuration)"
 NOTION_API_KEY=${configuration[0]}
 DATABASE_ID=${configuration[1]}
 SPREADSHEET_ID=${configuration[2]}
-RANGE=${configuration[3]}
+CELL_NAME=${configuration[3]}
+SHEET_NAME=${configuration[4]}
+RANGE="$SHEET_NAME!$CELL_NAME"
 FILTER_FIELD="$1"
 FILTER_VALUE="$2"
+
+# Overwrite Spreadsheet, if third paramter is given
+if [ -n "$3" ]; then
+    RANGE="$3!$CELL_NAME"
+fi
 
 # -------------------------------------------------------------------------
 # Execution of functions
